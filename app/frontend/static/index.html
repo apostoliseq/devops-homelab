@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Shortener</title>
+    <style>
+        /* Center everything on the page */
+        body {
+            font-family: sans-serif;
+            max-width: 600px;
+            margin: 80px auto;
+            padding: 0 20px;
+        }
+
+        input[type="url"] {
+            width: 100%;
+            padding: 8px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        button {
+            margin-top: 8px;
+            padding: 8px 16px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        #result {
+            margin-top: 16px;
+            padding: 12px;
+            background: #f0f9f0;
+            border: 1px solid #b2d8b2;
+        }
+
+        #error {
+            margin-top: 16px;
+            padding: 12px;
+            background: #fff0f0;
+            border: 1px solid #f5c0c0;
+            color: #c00;
+        }
+    </style>
+</head>
+<body>
+    <h1>URL Shortener</h1>
+
+    <form id="shorten-form">
+        <!-- type="url" makes the browser validate the format before submitting -->
+        <input type="url" id="url-input"
+               placeholder="https://example.com/very/long/url"
+               required>
+        <br>
+        <button type="submit">Shorten</button>
+    </form>
+
+    <!-- hidden attribute collapses the element until we remove it via JS -->
+    <div id="result" hidden>
+        Short URL: <a id="short-link" href="#" target="_blank"></a>
+    </div>
+
+    <div id="error" hidden>
+        <span id="error-message"></span>
+    </div>
+
+    <script>
+        const form = document.getElementById('shorten-form');
+        const resultDiv = document.getElementById('result');
+        const shortLink = document.getElementById('short-link');
+        const errorDiv = document.getElementById('error');
+        const errorMsg = document.getElementById('error-message');
+
+        form.addEventListener('submit', async function(event) {
+            // Prevent the default form behaviour (full page reload)
+            event.preventDefault();
+
+            // Hide any previous result or error
+            resultDiv.hidden = true;
+            errorDiv.hidden = true;
+
+            const url = document.getElementById('url-input').value;
+
+            try {
+                // fetch() sends the POST to /shorten — Nginx proxies this to the API
+                const response = await fetch('/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // 201 Created — show the short URL as a clickable link
+                    shortLink.href = data.short_url;
+                    shortLink.textContent = data.short_url;
+                    resultDiv.hidden = false;
+                } else {
+                    // 400 or 500 — show the error message from the API
+                    errorMsg.textContent = data.error || 'An error occurred.';
+                    errorDiv.hidden = false;
+                }
+            } catch (err) {
+                // Network error — fetch() itself threw (server unreachable etc.)
+                errorMsg.textContent = 'Could not reach the server.';
+                errorDiv.hidden = false;
+            }
+        });
+    </script>
+</body>
+</html>

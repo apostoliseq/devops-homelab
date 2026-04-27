@@ -112,6 +112,32 @@
   fi
 
   # --------------------------------------------------------------------------
+  # pytest — Python test runner
+  # --------------------------------------------------------------------------
+  # Installed via pipx so it stays isolated from the system Python.
+  # We then inject the app's runtime dependencies into the pytest virtualenv
+  # so that tests can import flask, psycopg2, etc. without needing a separate
+  # project-level virtualenv. The injected versions are pinned to match
+  # app/api/requirements.txt exactly.
+
+  info "Installing pytest and test dependencies"
+
+  if ! pipx list | grep -q pytest; then
+      pipx install pytest
+  fi
+
+  # Inject app dependencies into pytest's isolated venv.
+  # pipx inject adds packages to an existing pipx-managed venv without
+  # creating a new one. The --quiet flag suppresses per-package output.
+  pipx inject pytest --quiet \
+      "flask==3.1.1" \
+      "gunicorn==22.0.0" \
+      "psycopg2-binary==2.9.10" \
+      "redis==5.2.1" \
+      "pika==1.3.2" \
+      "prometheus-client==0.21.1"
+
+  # --------------------------------------------------------------------------
   # Done
   # --------------------------------------------------------------------------
 
@@ -120,6 +146,7 @@
   docker --version
   docker compose version
   hadolint --version
-  # flake8 lives in ~/.local/bin — may need a new shell to appear on PATH
+  # Tools live in ~/.local/bin — may need a new shell to appear on PATH
   export PATH="$HOME/.local/bin:$PATH"
   flake8 --version
+  pytest --version

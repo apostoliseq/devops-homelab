@@ -1,3 +1,12 @@
 CLAUDE.md
 .claude/
 docs/PROJECT_PLAN.md
+
+# Local environment — credentials must never be committed
+.env
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

@@ -1,0 +1,133 @@
+# docker-compose.yml — wires all 6 services together for local development.
+# Run with: docker compose up -d
+# Credentials are loaded from the .env file in this directory.
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure services (postgres, redis, rabbitmq)
+  # These start first. The API and worker wait for them to be healthy.
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    build:
+      context: infra/postgres
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      # Named volume — data persists across `docker compose down` restarts.
+      # Destroyed only with `docker compose down -v`.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready exits 0 when the server is accepting connections.
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    build:
+      context: infra/redis
+      dockerfile: Dockerfile
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      # redis-cli ping returns PONG when Redis is ready.
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  rabbitmq:
+    build:
+      context: infra/rabbitmq
+      dockerfile: Dockerfile
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    ports:
+      # Management UI — accessible at http://<vm-ip>:15672 for debugging.
+      # Not exposed in production.
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Application services (api, worker, frontend)
+  # These start only after their dependencies pass their healthchecks.
+  # ---------------------------------------------------------------------------
+
+  api:
+    build:
+      # context is the directory Docker sends to the build daemon.
+      # Only files in app/api/ (minus .dockerignore) are included.
+      context: app/api
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      REDIS_HOST: ${REDIS_HOST}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+      BASE_URL: ${BASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    # Port 5000 is NOT exposed to the host — only the frontend Nginx can reach it,
+    # via Docker's internal network. The outside world goes through port 80 only.
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: app/worker
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: app/frontend
+      dockerfile: Dockerfile
+    ports:
+      # The only port exposed to the outside world.
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Named volumes
+# ---------------------------------------------------------------------------
+
+volumes:
+  # Declaring volumes here makes them managed by Compose under a predictable name.
+  postgres_data:
+  redis_data:
